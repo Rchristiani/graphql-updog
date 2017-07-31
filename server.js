@@ -1,67 +1,82 @@
-
 const { graphql } = require('graphql');
 const { makeExecutableSchema } = require('graphql-tools');
 const express = require('express');
 const graphqlHTTP = require('express-graphql');
+const mongoose = require('mongoose');
+
+const DogSchema = new mongoose.Schema({
+    name: String,
+    photo: String,
+    description: String,
+    score: {
+        type: Number,
+        default: 0
+    }
+});
+
+const Dog = mongoose.model('Pet',DogSchema);
+
+mongoose.connect('mongodb://localhost/updog');
 
 const app = express();
 
-
-const dogs = [
-    {
-        id: 1,
-        name: 'Dug the Pug',
-    },
-    {
-        id: 2,
-        name: 'Jessie',
-    }
-]
-
-let id = dogs.length;
+app.use(express.static('public'));
 
 const typeDefs = `
     type Query {
         allDogs: [Dog]
     }
     type Mutation {
-        createDog(name: String!): Dog,
-        deleteDog(id: Int!): Dog,
-        updateDog(id: Int!, name: String!): Dog
+        createDog(
+            name: String!
+            photo: String!
+            description: String!
+        ): Dog,
+        deleteDog(_id: String!): Dog,
+        updateDog(_id: String!): Dog
     }
     type Dog {
-        id: Int
+        _id: String
         name: String
+        description: String
+        photo: String
+        score: Int
     }
 `;
 
 const resolvers = {
     Query: {
-        allDogs: () => {
-            return dogs;
-        }
+        allDogs: () => new Promise((resolve,reject) => {
+            Dog.find({},(err,docs) => {
+                if(err !== null) {
+                    reject(err);
+                }
+                resolve(docs);
+            })
+        })
     },
     Mutation: {
-        createDog: (_, {name}) => {
-            const dog = {
-                id: id++,
-                name,
-            }
-            dogs.push(dog);
-            return dog; 
-        },
-        deleteDog: (_, {id}) => {
-            const dog = dogs.filter(dog => dog.id === id)[0];
-            const dogIndex = dogs.indexOf(dog);
-            dogs.splice(dogIndex, dogIndex + 1);
-            return dog;
-        },
-        updateDog: (_, {id, name}) => {
-            const dog = dogs.filter(dog => dog.id === id)[0];
-            const dogIndex = dogs.indexOf(dog);
-            dogs[dogIndex].name = name;
-            return dogs[dogIndex];
-        }
+        createDog: (_, dog) => new Dog(dog).save(),
+        deleteDog: (_, {_id}) => new Promise((resolve,reject) => {
+            Dog.findByIdAndRemove(_id,(err,doc) => {
+                if(err !== null) {
+                    reject(err);
+                }
+                resolve(doc);
+            });
+        }),
+        updateDog: (_, {_id}) => new Promise((resolve,reject) => {
+            Dog.findByIdAndUpdate(_id,{
+                $inc: {
+                    score: 1
+                }
+            },(err,doc) => {
+                if(err !== null) {
+                    reject(err)
+                }
+                resolve(doc)
+            });
+        })
     }
 }
 const schema = makeExecutableSchema({ typeDefs, resolvers });
